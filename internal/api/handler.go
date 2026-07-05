@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
+	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/models"
 )
 
@@ -72,6 +73,7 @@ func (h *Handler) CreateWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	metrics.WorkflowRunsTotal.WithLabelValues(wfID).Inc()
 	writeJSON(w, http.StatusCreated, run)
 }
 

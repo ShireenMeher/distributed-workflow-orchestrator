@@ -12,9 +12,11 @@ import (
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/api"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/config"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
+	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 )
 
 func main() {
+	metrics.Register()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg := config.Load()
 

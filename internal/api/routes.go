@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func NewRouter(h *Handler) http.Handler {
@@ -20,6 +21,7 @@ func NewRouter(h *Handler) http.Handler {
 	r.Get("/runs/{runID}/tasks", h.GetTaskRunsForRun)
 	r.Get("/tasks/{taskRunID}", h.GetTaskRun)
 	r.Get("/dlq", h.ListDeadLetterTasks)
+	r.Handle("/metrics", promhttp.Handler())
 
 	return r
 }
