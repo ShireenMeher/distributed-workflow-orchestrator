@@ -1,6 +1,13 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"context"
+	"log/slog"
+	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
 
 var (
 	WorkflowRunsTotal = prometheus.NewCounterVec(
@@ -104,4 +111,22 @@ func Register() {
 		QueuedTasksGauge,
 		RunningTasksGauge,
 	)
+}
+
+// Serve starts a lightweight HTTP server on the given port exposing /metrics.
+// It blocks until ctx is cancelled. port must be non-empty.
+func Serve(ctx context.Context, port string, logger *slog.Logger) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	srv := &http.Server{Addr: ":" + port, Handler: mux}
+
+	go func() {
+		logger.Info("metrics server listening", "port", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("metrics server error", "error", err)
+		}
+	}()
+
+	<-ctx.Done()
+	srv.Shutdown(context.Background()) //nolint:errcheck
 }
