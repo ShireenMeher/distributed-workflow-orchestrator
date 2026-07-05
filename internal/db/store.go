@@ -665,3 +665,92 @@ func (s *Store) LogEvent(ctx context.Context, event *models.TaskEvent) error {
 	`, event.RunID, event.TaskRunID, event.TaskID, event.EventType, event.Message)
 	return err
 }
+
+// CreateSchedule inserts a new workflow schedule.
+func (s *Store) CreateSchedule(ctx context.Context, workflowID, cronExpr string, nextRunAt time.Time) (*models.WorkflowSchedule, error) {
+	var sched models.WorkflowSchedule
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO workflow_schedules (workflow_id, cron_expression, next_run_at)
+		VALUES ($1, $2, $3)
+		RETURNING schedule_id, workflow_id, cron_expression, next_run_at, enabled, created_at, updated_at
+	`, workflowID, cronExpr, nextRunAt).Scan(
+		&sched.ID, &sched.WorkflowID, &sched.CronExpression, &sched.NextRunAt,
+		&sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert schedule: %w", err)
+	}
+	return &sched, nil
+}
+
+// ListSchedules returns all workflow schedules ordered by creation time descending.
+func (s *Store) ListSchedules(ctx context.Context) ([]*models.WorkflowSchedule, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT schedule_id, workflow_id, cron_expression, next_run_at, enabled, created_at, updated_at
+		FROM workflow_schedules
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query schedules: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*models.WorkflowSchedule
+	for rows.Next() {
+		var sched models.WorkflowSchedule
+		if err := rows.Scan(
+			&sched.ID, &sched.WorkflowID, &sched.CronExpression, &sched.NextRunAt,
+			&sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan schedule: %w", err)
+		}
+		result = append(result, &sched)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return result, nil
+}
+
+// DeleteSchedule removes a workflow schedule by ID.
+func (s *Store) DeleteSchedule(ctx context.Context, scheduleID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM workflow_schedules WHERE schedule_id = $1`, scheduleID)
+	return err
+}
+
+// FindDueSchedules returns enabled schedules whose next_run_at is in the past.
+func (s *Store) FindDueSchedules(ctx context.Context) ([]*models.WorkflowSchedule, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT schedule_id, workflow_id, cron_expression, next_run_at, enabled, created_at, updated_at
+		FROM workflow_schedules
+		WHERE enabled = TRUE AND next_run_at <= NOW()
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query due schedules: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*models.WorkflowSchedule
+	for rows.Next() {
+		var sched models.WorkflowSchedule
+		if err := rows.Scan(
+			&sched.ID, &sched.WorkflowID, &sched.CronExpression, &sched.NextRunAt,
+			&sched.Enabled, &sched.CreatedAt, &sched.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan schedule: %w", err)
+		}
+		result = append(result, &sched)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return result, nil
+}
+
+// UpdateScheduleNextRun updates the next_run_at for a schedule.
+func (s *Store) UpdateScheduleNextRun(ctx context.Context, scheduleID string, nextRunAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE workflow_schedules SET next_run_at = $2, updated_at = NOW() WHERE schedule_id = $1
+	`, scheduleID, nextRunAt)
+	return err
+}

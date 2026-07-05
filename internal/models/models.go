@@ -115,6 +115,16 @@ type TaskEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type WorkflowSchedule struct {
+	ID             string    `json:"id"`
+	WorkflowID     string    `json:"workflow_id"`
+	CronExpression string    `json:"cron_expression"`
+	NextRunAt      time.Time `json:"next_run_at"`
+	Enabled        bool      `json:"enabled"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 type DeadLetterTask struct {
 	DLQID      string          `json:"dlq_id"`
 	TaskRunID  string          `json:"task_run_id"`
