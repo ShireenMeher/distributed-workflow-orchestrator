@@ -80,3 +80,6 @@ CREATE TABLE IF NOT EXISTS dead_letter_tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dlq_run_id ON dead_letter_tasks(run_id);
+
+ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(512);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_runs_idempotency ON task_runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
