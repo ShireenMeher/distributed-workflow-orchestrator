@@ -595,6 +595,13 @@ func (s *Store) MarkTaskFailed(ctx context.Context, taskRunID string, errMsg str
 	return err
 }
 
+// CountTasksByStatus returns the count of task runs in the given status.
+func (s *Store) CountTasksByStatus(ctx context.Context, status models.TaskRunStatus) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM task_runs WHERE status = $1`, string(status)).Scan(&count)
+	return count, err
+}
+
 // IsTaskAlreadySucceeded checks if a task with the given idempotency key has already succeeded.
 func (s *Store) IsTaskAlreadySucceeded(ctx context.Context, idempotencyKey string) (bool, error) {
 	var count int

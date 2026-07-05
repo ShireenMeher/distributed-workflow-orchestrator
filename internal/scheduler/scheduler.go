@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
+	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/models"
 )
 
@@ -40,11 +41,17 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) tick(ctx context.Context) {
+	start := time.Now()
+	defer func() {
+		metrics.SchedulerLoopDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	// Handle orphaned tasks first
 	orphaned, err := s.store.FindOrphanedTasks(ctx)
 	if err != nil {
 		s.logger.Error("find orphaned tasks", "error", err)
 	}
+	metrics.TaskLeaseExpiredTotal.Add(float64(len(orphaned)))
 	for _, tr := range orphaned {
 		s.logger.Warn("requeueing orphaned task", "task_run_id", tr.ID, "task_id", tr.TaskID)
 		if err := s.store.RequeueOrphanedTask(ctx, tr.ID); err != nil {
@@ -71,6 +78,7 @@ func (s *Scheduler) tick(ctx context.Context) {
 			s.logger.Error("mark retry task queued", "task_run_id", tr.ID, "error", err)
 			continue
 		}
+		metrics.TaskRetriesTotal.WithLabelValues(string(tr.TaskType)).Inc()
 		_ = s.store.LogEvent(ctx, &models.TaskEvent{
 			RunID:     tr.RunID,
 			TaskRunID: &tr.ID,
@@ -89,6 +97,18 @@ func (s *Scheduler) tick(ctx context.Context) {
 
 	for _, runID := range runIDs {
 		s.processRun(ctx, runID)
+	}
+
+	// Update gauge metrics for queued and running tasks
+	if queuedCount, err := s.store.CountTasksByStatus(ctx, models.TaskRunStatusQueued); err != nil {
+		s.logger.Error("count queued tasks", "error", err)
+	} else {
+		metrics.QueuedTasksGauge.Set(float64(queuedCount))
+	}
+	if runningCount, err := s.store.CountTasksByStatus(ctx, models.TaskRunStatusRunning); err != nil {
+		s.logger.Error("count running tasks", "error", err)
+	} else {
+		metrics.RunningTasksGauge.Set(float64(runningCount))
 	}
 }
 
