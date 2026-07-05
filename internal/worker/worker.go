@@ -9,6 +9,7 @@ import (
 
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/executor"
+	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/models"
 )
 
@@ -84,11 +85,14 @@ func (w *Worker) processNext(ctx context.Context) {
 	defer hbCancel()
 	go w.heartbeat(hbCtx, taskRun.ID)
 
+	// Capture start time before execution for duration metrics
+	start := time.Now()
+
 	// Execute the task
 	exec, err := executor.New(taskRun.TaskType)
 	if err != nil {
 		hbCancel()
-		w.failTask(ctx, taskRun, err.Error())
+		w.failTask(ctx, taskRun, err.Error(), start)
 		return
 	}
 
@@ -96,7 +100,7 @@ func (w *Worker) processNext(ctx context.Context) {
 	hbCancel()
 
 	if result.Err != nil {
-		w.failTask(ctx, taskRun, result.Err.Error())
+		w.failTask(ctx, taskRun, result.Err.Error(), start)
 		return
 	}
 
@@ -104,6 +108,8 @@ func (w *Worker) processNext(ctx context.Context) {
 		w.logger.Error("mark task succeeded", "task_run_id", taskRun.ID, "error", err)
 		return
 	}
+	metrics.TaskRunsTotal.WithLabelValues(string(taskRun.TaskType), "succeeded").Inc()
+	metrics.TaskDurationSeconds.WithLabelValues(string(taskRun.TaskType), "succeeded").Observe(time.Since(start).Seconds())
 	w.logger.Info("task succeeded", "task_run_id", taskRun.ID, "task_id", taskRun.TaskID)
 	_ = w.store.LogEvent(ctx, &models.TaskEvent{
 		RunID:     taskRun.RunID,
@@ -114,7 +120,7 @@ func (w *Worker) processNext(ctx context.Context) {
 	})
 }
 
-func (w *Worker) failTask(ctx context.Context, taskRun *models.TaskRun, errMsg string) {
+func (w *Worker) failTask(ctx context.Context, taskRun *models.TaskRun, errMsg string, start time.Time) {
 	var policy *models.RetryPolicy
 	if len(taskRun.RetryPolicyJSON) > 0 {
 		var p models.RetryPolicy
@@ -127,6 +133,9 @@ func (w *Worker) failTask(ctx context.Context, taskRun *models.TaskRun, errMsg s
 		w.logger.Error("mark task failed", "task_run_id", taskRun.ID, "error", err)
 		return
 	}
+
+	metrics.TaskRunsTotal.WithLabelValues(string(taskRun.TaskType), "failed").Inc()
+	metrics.TaskDurationSeconds.WithLabelValues(string(taskRun.TaskType), "failed").Observe(time.Since(start).Seconds())
 
 	w.logger.Warn("task failed", "task_run_id", taskRun.ID, "task_id", taskRun.TaskID, "error", errMsg)
 	_ = w.store.LogEvent(ctx, &models.TaskEvent{
@@ -142,6 +151,7 @@ func (w *Worker) failTask(ctx context.Context, taskRun *models.TaskRun, errMsg s
 		if err := w.store.MoveToDeadLetterQueue(ctx, taskRun, errMsg); err != nil {
 			w.logger.Error("move to dead letter queue", "task_run_id", taskRun.ID, "error", err)
 		} else {
+			metrics.DeadLetterTasksTotal.WithLabelValues(string(taskRun.TaskType)).Inc()
 			w.logger.Warn("task moved to dead letter queue", "task_run_id", taskRun.ID, "task_id", taskRun.TaskID)
 		}
 	}
