@@ -83,3 +83,15 @@ CREATE INDEX IF NOT EXISTS idx_dlq_run_id ON dead_letter_tasks(run_id);
 
 ALTER TABLE task_runs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(512);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_runs_idempotency ON task_runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS workflow_schedules (
+    schedule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id UUID NOT NULL REFERENCES workflows(workflow_id),
+    cron_expression VARCHAR(255) NOT NULL,
+    next_run_at TIMESTAMPTZ NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflow_schedules_next_run ON workflow_schedules(next_run_at) WHERE enabled = TRUE;
