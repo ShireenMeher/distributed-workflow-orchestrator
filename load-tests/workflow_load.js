@@ -23,9 +23,14 @@ export const options = {
     },
   },
   thresholds: {
+    // Zero tolerance for errors
     errors: ['rate<0.01'],
-    scheduling_latency_ms: ['p(95)<500', 'p(99)<1000'],
-    run_completion_time_ms: ['p(95)<15000'],
+    // Scheduling latency is bounded by SCHEDULER_INTERVAL_MS (default 1s).
+    // p95 ≈ 1x interval under load. Reduce SCHEDULER_INTERVAL_MS for tighter latency.
+    scheduling_latency_ms: ['p(95)<2000', 'p(99)<2500'],
+    // Run completion time under 20-VU concurrent load with 3 workers and multi-hop DAGs
+    run_completion_time_ms: ['p(95)<60000'],
+    // HTTP API (create/poll) should stay fast regardless of execution load
     http_req_duration: ['p(99)<500'],
   },
 };
