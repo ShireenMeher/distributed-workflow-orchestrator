@@ -22,6 +22,9 @@ func NewRouter(h *Handler) http.Handler {
 	r.Get("/tasks/{taskRunID}", h.GetTaskRun)
 	r.Get("/dlq", h.ListDeadLetterTasks)
 	r.Handle("/metrics", promhttp.Handler())
+	r.Post("/schedules", h.CreateSchedule)
+	r.Get("/schedules", h.ListSchedules)
+	r.Delete("/schedules/{scheduleID}", h.DeleteSchedule)
 
 	return r
 }

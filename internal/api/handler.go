@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/robfig/cron/v3"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/models"
@@ -113,6 +115,59 @@ func (h *Handler) GetTaskRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
+}
+
+func (h *Handler) CreateSchedule(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WorkflowID     string `json:"workflow_id"`
+		CronExpression string `json:"cron_expression"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.WorkflowID == "" {
+		writeError(w, http.StatusBadRequest, "workflow_id is required")
+		return
+	}
+	if body.CronExpression == "" {
+		writeError(w, http.StatusBadRequest, "cron_expression is required")
+		return
+	}
+
+	// Validate cron expression
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	schedule, err := parser.Parse(body.CronExpression)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid cron_expression: "+err.Error())
+		return
+	}
+
+	nextRunAt := schedule.Next(time.Now())
+	sched, err := h.store.CreateSchedule(r.Context(), body.WorkflowID, body.CronExpression, nextRunAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, sched)
+}
+
+func (h *Handler) ListSchedules(w http.ResponseWriter, r *http.Request) {
+	schedules, err := h.store.ListSchedules(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, schedules)
+}
+
+func (h *Handler) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	scheduleID := chi.URLParam(r, "scheduleID")
+	if err := h.store.DeleteSchedule(r.Context(), scheduleID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) ListDeadLetterTasks(w http.ResponseWriter, r *http.Request) {
