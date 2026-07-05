@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/db"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/metrics"
 	"github.com/shireenmeher/distributed-workflow-orchestrator/internal/models"
@@ -40,7 +41,34 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
+func (s *Scheduler) processCronSchedules(ctx context.Context) {
+	schedules, err := s.store.FindDueSchedules(ctx)
+	if err != nil {
+		s.logger.Error("find due schedules", "error", err)
+		return
+	}
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	for _, sched := range schedules {
+		_, err := s.store.CreateWorkflowRun(ctx, sched.WorkflowID)
+		if err != nil {
+			s.logger.Error("create scheduled run", "schedule_id", sched.ID, "error", err)
+			continue
+		}
+		schedule, err := parser.Parse(sched.CronExpression)
+		if err != nil {
+			s.logger.Error("parse cron expression", "expr", sched.CronExpression, "error", err)
+			continue
+		}
+		nextRun := schedule.Next(time.Now())
+		if err := s.store.UpdateScheduleNextRun(ctx, sched.ID, nextRun); err != nil {
+			s.logger.Error("update next run", "schedule_id", sched.ID, "error", err)
+		}
+		s.logger.Info("cron workflow triggered", "schedule_id", sched.ID, "next_run_at", nextRun)
+	}
+}
+
 func (s *Scheduler) tick(ctx context.Context) {
+	s.processCronSchedules(ctx)
 	start := time.Now()
 	defer func() {
 		metrics.SchedulerLoopDuration.Observe(time.Since(start).Seconds())
