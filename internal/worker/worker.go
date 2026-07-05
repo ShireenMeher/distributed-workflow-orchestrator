@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -66,6 +67,17 @@ func (w *Worker) processNext(ctx context.Context) {
 		EventType: "TASK_STARTED",
 		Message:   "worker " + w.id + " started execution",
 	})
+
+	// Check idempotency before executing
+	idempotencyKey := fmt.Sprintf("%s:%s:%d", taskRun.RunID, taskRun.TaskID, taskRun.Attempt)
+	already, err := w.store.IsTaskAlreadySucceeded(ctx, idempotencyKey)
+	if err != nil {
+		w.logger.Error("idempotency check failed", "error", err)
+	} else if already {
+		w.logger.Info("task already succeeded, skipping execution", "idempotency_key", idempotencyKey)
+		_ = w.store.MarkTaskSucceeded(ctx, taskRun.ID, nil)
+		return
+	}
 
 	// Start heartbeat
 	hbCtx, hbCancel := context.WithCancel(ctx)

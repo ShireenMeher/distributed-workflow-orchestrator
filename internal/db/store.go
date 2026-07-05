@@ -505,7 +505,8 @@ func (s *Store) ClaimTask(ctx context.Context, workerID string, leaseDurationSec
 		    started_at = NOW(),
 		    lease_owner = $2,
 		    lease_expires_at = NOW() + ($3 * interval '1 second'),
-		    last_heartbeat_at = NOW()
+		    last_heartbeat_at = NOW(),
+		    idempotency_key = run_id || ':' || task_id || ':' || (attempt + 1)::text
 		WHERE task_run_id = $1
 	`, taskRunID, workerID, leaseDurationSecs)
 	if err != nil {
@@ -592,6 +593,18 @@ func (s *Store) MarkTaskFailed(ctx context.Context, taskRunID string, errMsg str
 		`, taskRunID, errMsg)
 	}
 	return err
+}
+
+// IsTaskAlreadySucceeded checks if a task with the given idempotency key has already succeeded.
+func (s *Store) IsTaskAlreadySucceeded(ctx context.Context, idempotencyKey string) (bool, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM task_runs WHERE idempotency_key = $1 AND status = 'SUCCEEDED'
+	`, idempotencyKey).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check idempotency: %w", err)
+	}
+	return count > 0, nil
 }
 
 // MoveToDeadLetterQueue inserts a permanently failed task into the dead_letter_tasks table.
