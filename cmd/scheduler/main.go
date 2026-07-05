@@ -38,6 +38,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go sched.Run(runCtx)
+	if cfg.MetricsPort != "" {
+		go metrics.Serve(runCtx, cfg.MetricsPort, logger)
+	}
 
 	<-quit
 	logger.Info("shutting down scheduler")
