@@ -66,3 +66,17 @@ CREATE INDEX IF NOT EXISTS idx_task_runs_status ON task_runs(status);
 CREATE INDEX IF NOT EXISTS idx_task_runs_next_retry ON task_runs(next_retry_at) WHERE status = 'RETRY_WAITING';
 CREATE INDEX IF NOT EXISTS idx_task_runs_lease ON task_runs(lease_expires_at) WHERE status = 'RUNNING';
 CREATE INDEX IF NOT EXISTS idx_task_dependencies_run_task ON task_dependencies(run_id, task_id);
+
+CREATE TABLE IF NOT EXISTS dead_letter_tasks (
+    dlq_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_run_id UUID NOT NULL,
+    run_id UUID NOT NULL,
+    task_id VARCHAR(255) NOT NULL,
+    task_type VARCHAR(50) NOT NULL,
+    final_error TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    task_config JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_dlq_run_id ON dead_letter_tasks(run_id);
