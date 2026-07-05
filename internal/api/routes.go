@@ -19,6 +19,7 @@ func NewRouter(h *Handler) http.Handler {
 	r.Get("/runs/{runID}", h.GetWorkflowRun)
 	r.Get("/runs/{runID}/tasks", h.GetTaskRunsForRun)
 	r.Get("/tasks/{taskRunID}", h.GetTaskRun)
+	r.Get("/dlq", h.ListDeadLetterTasks)
 
 	return r
 }

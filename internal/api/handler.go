@@ -113,6 +113,15 @@ func (h *Handler) GetTaskRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
+func (h *Handler) ListDeadLetterTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := h.store.ListDeadLetterTasks(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
 // validateDAG validates the workflow definition: unique IDs, valid deps, no cycles
 func validateDAG(def *models.WorkflowDefinition) error {
 	if len(def.Tasks) == 0 {
