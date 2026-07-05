@@ -594,6 +594,49 @@ func (s *Store) MarkTaskFailed(ctx context.Context, taskRunID string, errMsg str
 	return err
 }
 
+// MoveToDeadLetterQueue inserts a permanently failed task into the dead_letter_tasks table.
+func (s *Store) MoveToDeadLetterQueue(ctx context.Context, tr *models.TaskRun, finalError string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO dead_letter_tasks (task_run_id, run_id, task_id, task_type, final_error, attempts, task_config)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, tr.ID, tr.RunID, tr.TaskID, string(tr.TaskType), finalError, tr.Attempt, tr.TaskConfig)
+	if err != nil {
+		return fmt.Errorf("insert dead letter task: %w", err)
+	}
+	return nil
+}
+
+// ListDeadLetterTasks returns all dead letter queue entries ordered by creation time descending.
+func (s *Store) ListDeadLetterTasks(ctx context.Context) ([]*models.DeadLetterTask, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT dlq_id, task_run_id, run_id, task_id, task_type, final_error, attempts, task_config, created_at
+		FROM dead_letter_tasks
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query dead letter tasks: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*models.DeadLetterTask
+	for rows.Next() {
+		var d models.DeadLetterTask
+		var taskConfig []byte
+		if err := rows.Scan(
+			&d.DLQID, &d.TaskRunID, &d.RunID, &d.TaskID, &d.TaskType,
+			&d.FinalError, &d.Attempts, &taskConfig, &d.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan dead letter task: %w", err)
+		}
+		d.TaskConfig = taskConfig
+		result = append(result, &d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return result, nil
+}
+
 // LogEvent inserts a task event record.
 func (s *Store) LogEvent(ctx context.Context, event *models.TaskEvent) error {
 	_, err := s.pool.Exec(ctx, `

@@ -115,6 +115,18 @@ type TaskEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type DeadLetterTask struct {
+	DLQID      string          `json:"dlq_id"`
+	TaskRunID  string          `json:"task_run_id"`
+	RunID      string          `json:"run_id"`
+	TaskID     string          `json:"task_id"`
+	TaskType   TaskType        `json:"task_type"`
+	FinalError string          `json:"final_error"`
+	Attempts   int             `json:"attempts"`
+	TaskConfig json.RawMessage `json:"task_config,omitempty"`
+	CreatedAt  time.Time       `json:"created_at"`
+}
+
 func ComputeNextRetryAt(attempt int, policy *RetryPolicy) time.Time {
 	if policy == nil {
 		delaySecs := attempt * 5
