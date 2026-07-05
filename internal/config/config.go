@@ -8,6 +8,7 @@ import (
 type Config struct {
 	DatabaseURL              string
 	APIPort                  string
+	MetricsPort              string
 	WorkerID                 string
 	SchedulerIntervalMS      int
 	WorkerPollIntervalMS     int
@@ -20,6 +21,7 @@ func Load() *Config {
 	return &Config{
 		DatabaseURL:              getEnv("DATABASE_URL", "postgres://orchestrator:orchestrator@localhost:5432/orchestrator?sslmode=disable"),
 		APIPort:                  getEnv("API_PORT", "8080"),
+		MetricsPort:              getEnv("METRICS_PORT", ""),
 		WorkerID:                 getEnv("WORKER_ID", hostname),
 		SchedulerIntervalMS:      getEnvInt("SCHEDULER_INTERVAL_MS", 1000),
 		WorkerPollIntervalMS:     getEnvInt("WORKER_POLL_INTERVAL_MS", 500),
