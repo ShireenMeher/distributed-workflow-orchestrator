@@ -124,6 +124,15 @@ func (w *Worker) failTask(ctx context.Context, taskRun *models.TaskRun, errMsg s
 		EventType: "TASK_FAILED",
 		Message:   errMsg,
 	})
+
+	// Move permanently failed tasks (exhausted all attempts) to the dead letter queue.
+	if taskRun.Attempt >= taskRun.MaxAttempts {
+		if err := w.store.MoveToDeadLetterQueue(ctx, taskRun, errMsg); err != nil {
+			w.logger.Error("move to dead letter queue", "task_run_id", taskRun.ID, "error", err)
+		} else {
+			w.logger.Warn("task moved to dead letter queue", "task_run_id", taskRun.ID, "task_id", taskRun.TaskID)
+		}
+	}
 }
 
 func (w *Worker) heartbeat(ctx context.Context, taskRunID string) {
