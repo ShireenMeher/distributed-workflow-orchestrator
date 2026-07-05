@@ -48,6 +48,36 @@ Three independent binaries share one Postgres database. The database is the queu
 
 ---
 
+## Performance & Failure Simulation Results
+
+**Test setup:** 1 API server · 1 scheduler · 3 worker containers · Postgres-backed task queue · k6 workload ramping to 20 peak virtual users
+
+| Test | Runs | Tasks | Workers | Result |
+|------|-----:|------:|--------:|--------|
+| Linear pipeline (3-task sequential) | ~36 | ~108 | 3 | all SUCCEEDED |
+| Fan-out / fan-in (5-task DAG) | ~36 | ~180 | 3 | all SUCCEEDED |
+| Parallel branches (6-task DAG) | ~36 | ~216 | 3 | all SUCCEEDED |
+| **Load test (all shapes combined)** | **108** | **511** | **3** | HTTP p99 8.79 ms · scheduling p95 1.02 s · run completion p95 31.76 s |
+| Worker crash recovery | 20 | 20 | 3 → 2 | Orphaned task recovered in ~30 s · 20 / 20 SUCCEEDED |
+
+Zero failures. Zero duplicate task executions. Zero manual intervention required.
+
+> Full details, thresholds, and raw k6 output in [Load Testing](#load-testing).
+
+---
+
+## Design Decisions
+
+- **Postgres as the source of truth** — a single shared database eliminates distributed state synchronization; every service reads and writes the same `task_runs` table, so any process can crash and restart without losing work
+- **Postgres-backed queue via `SELECT FOR UPDATE SKIP LOCKED`** — workers compete directly on the database for tasks; no external broker (Redis, Kafka, RabbitMQ) is required, which keeps the operational footprint minimal
+- **At-least-once execution with idempotency keys** — each task claim is tagged `run_id:task_id:attempt`; on crash recovery a duplicate claim finds the key already `SUCCEEDED` and skips re-execution, preventing double side effects
+- **Worker leases + heartbeats for crash recovery** — each task claim holds an exclusive lease renewed every 10 s; the scheduler detects stale leases after 30 s and requeues the task automatically, with no coordinator or consensus protocol needed
+- **Dead letter queue for permanent failures** — tasks that exhaust all retry attempts are moved to `dead_letter_tasks` rather than silently dropped, enabling inspection and manual replay via `GET /dlq`
+- **Stateless scheduler and workers** — neither process holds any in-memory state; both can be killed and restarted at any time without affecting correctness
+- **Per-service Prometheus metrics** — each binary exposes its own `/metrics` endpoint so API, scheduler, and worker telemetry are independently scrape-able and can be visualised separately
+
+---
+
 ## Core Features
 
 **Scheduling**
